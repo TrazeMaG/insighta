@@ -1,3 +1,6 @@
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+import pptxgen from 'pptxgenjs';
 import React, { useState, useRef } from 'react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Upload, MessageSquare, Send, TrendingUp, BarChart3, AlertCircle, X, Bug } from 'lucide-react';
@@ -30,7 +33,6 @@ export default function DataDashboard() {
     const categoricalCols = [];
     const dateCols = [];
 
-    // Analyze column types
     cols.forEach(col => {
       const sample = parsedData.slice(0, 10).map(row => row[col]).filter(v => v != null && v !== '');
       
@@ -48,7 +50,6 @@ export default function DataDashboard() {
       }
     });
 
-    // Generate KPIs for numeric columns
     if (numericCols.length > 0) {
       numericCols.slice(0, 4).forEach(col => {
         const values = parsedData.map(row => parseFloat(row[col])).filter(v => !isNaN(v));
@@ -68,7 +69,6 @@ export default function DataDashboard() {
       });
     }
 
-    // Total records KPI
     generatedKpis.unshift({
       title: 'Total Records',
       value: parsedData.length.toString(),
@@ -76,7 +76,6 @@ export default function DataDashboard() {
       trend: '100%'
     });
 
-    // Bar chart for categorical + numeric
     if (categoricalCols.length > 0 && numericCols.length > 0) {
       const catCol = categoricalCols[0];
       const numCol = numericCols[0];
@@ -103,7 +102,6 @@ export default function DataDashboard() {
       });
     }
 
-    // Line chart for time series
     if (dateCols.length > 0 && numericCols.length > 0) {
       const dateCol = dateCols[0];
       const numCol = numericCols[0];
@@ -127,7 +125,6 @@ export default function DataDashboard() {
       }
     }
 
-    // Area chart
     if (numericCols.length >= 2) {
       const areaData = parsedData.slice(0, 30).map((row, idx) => ({
         name: `Point ${idx + 1}`,
@@ -143,7 +140,6 @@ export default function DataDashboard() {
       });
     }
 
-    // Pie chart
     if (categoricalCols.length > 0) {
       const catCol = categoricalCols[0];
       const distribution = {};
@@ -166,7 +162,6 @@ export default function DataDashboard() {
       });
     }
 
-    // Multi-bar comparison
     if (numericCols.length >= 2) {
       const compData = parsedData.slice(0, 15).map((row, idx) => {
         const obj = { name: `Row ${idx + 1}` };
@@ -184,7 +179,6 @@ export default function DataDashboard() {
       });
     }
 
-    // Stacked area
     if (numericCols.length >= 2) {
       const stackData = parsedData.slice(0, 20).map((row, idx) => ({
         name: `P${idx + 1}`,
@@ -255,10 +249,162 @@ export default function DataDashboard() {
     }
   };
 
+  const exportToPDF = async () => {
+    setIsLoading(true);
+    try {
+      const dashboard = document.getElementById('dashboard-content');
+      const canvas = await html2canvas(dashboard, {
+        scale: 2,
+        backgroundColor: '#111827',
+        logging: false
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'px',
+        format: [canvas.width, canvas.height]
+      });
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+      pdf.save(`Insighta-Dashboard-${fileName}-${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      alert('Failed to export PDF. Please try again.');
+    }
+    setIsLoading(false);
+  };
+
+  const exportToPPT = async () => {
+    setIsLoading(true);
+    try {
+      const pptx = new pptxgen();
+      pptx.layout = 'LAYOUT_WIDE';
+      
+      const titleSlide = pptx.addSlide();
+      titleSlide.background = { color: '111827' };
+      titleSlide.addText('Insighta Dashboard', {
+        x: 1,
+        y: 2,
+        w: 10,
+        h: 1,
+        fontSize: 44,
+        bold: true,
+        color: 'FFFFFF'
+      });
+      titleSlide.addText(fileName, {
+        x: 1,
+        y: 3,
+        w: 10,
+        h: 0.5,
+        fontSize: 24,
+        color: '14B8A6'
+      });
+      titleSlide.addText(`Generated: ${new Date().toLocaleDateString()}`, {
+        x: 1,
+        y: 3.7,
+        w: 10,
+        h: 0.3,
+        fontSize: 14,
+        color: '9CA3AF'
+      });
+      
+      if (kpis.length > 0) {
+        const kpiSlide = pptx.addSlide();
+        kpiSlide.background = { color: '111827' };
+        kpiSlide.addText('Key Performance Indicators', {
+          x: 0.5,
+          y: 0.5,
+          fontSize: 28,
+          bold: true,
+          color: 'FFFFFF'
+        });
+        
+        kpis.slice(0, 4).forEach((kpi, idx) => {
+          const row = Math.floor(idx / 2);
+          const col = idx % 2;
+          kpiSlide.addText(kpi.title, {
+            x: 0.5 + col * 5,
+            y: 1.5 + row * 1.5,
+            w: 4,
+            h: 0.4,
+            fontSize: 16,
+            color: '9CA3AF'
+          });
+          kpiSlide.addText(kpi.value, {
+            x: 0.5 + col * 5,
+            y: 2 + row * 1.5,
+            w: 4,
+            h: 0.6,
+            fontSize: 32,
+            bold: true,
+            color: '14B8A6'
+          });
+        });
+      }
+      
+      for (let i = 0; i < charts.length; i++) {
+        const chart = charts[i];
+        const chartSlide = pptx.addSlide();
+        chartSlide.background = { color: '111827' };
+        chartSlide.addText(chart.title, {
+          x: 0.5,
+          y: 0.5,
+          fontSize: 24,
+          bold: true,
+          color: 'FFFFFF'
+        });
+        
+        const chartElement = document.querySelectorAll('.recharts-responsive-container')[i];
+        if (chartElement) {
+          const canvas = await html2canvas(chartElement, {
+            backgroundColor: '#1F2937',
+            scale: 2
+          });
+          const imgData = canvas.toDataURL('image/png');
+          chartSlide.addImage({
+            data: imgData,
+            x: 1,
+            y: 1.5,
+            w: 8,
+            h: 4
+          });
+        }
+      }
+      
+      const footerSlide = pptx.addSlide();
+      footerSlide.background = { color: '111827' };
+      footerSlide.addText('Created with Insighta', {
+        x: 1,
+        y: 2.5,
+        w: 8,
+        h: 0.5,
+        fontSize: 32,
+        bold: true,
+        color: '14B8A6',
+        align: 'center'
+      });
+      footerSlide.addText('Because your data deserves to talk back', {
+        x: 1,
+        y: 3.2,
+        w: 8,
+        h: 0.3,
+        fontSize: 16,
+        color: '9CA3AF',
+        align: 'center'
+      });
+      
+      await pptx.writeFile({ fileName: `Insighta-Dashboard-${fileName}-${new Date().toISOString().split('T')[0]}.pptx` });
+    } catch (error) {
+      console.error('Error exporting PPT:', error);
+      alert('Failed to export PowerPoint. Please try again.');
+    }
+    setIsLoading(false);
+  };
+
   const handleSendMessage = async () => {
     if (!userInput.trim() || isLoading) return;
 
-    // Check if API key is set
     if (!apiKey) {
       setShowApiKeyInput(true);
       return;
@@ -304,26 +450,17 @@ ${JSON.stringify(data?.slice(0, 3), null, 2)}
       const result = await response.json();
       let responseText = result.content[0].text;
       
-      // Check if response contains chart data and extract it
-      let chartCreated = false;
-      
-      // Look for JSON pattern in the response
       const jsonPattern = /\{[\s\S]*?"chartType"[\s\S]*?\}/;
       const jsonMatch = responseText.match(jsonPattern);
       
       if (jsonMatch) {
         try {
-          // Clean up the JSON string
           let jsonStr = jsonMatch[0];
-          // Remove any markdown code blocks
           jsonStr = jsonStr.replace(/```json\s*/g, '').replace(/```\s*/g, '');
           
           const chartSpec = JSON.parse(jsonStr);
-          
-          // Map histogram to bar chart
           const chartType = chartSpec.chartType === 'histogram' ? 'bar' : chartSpec.chartType;
           
-          // Add the chart to the dashboard
           setCharts(prev => [...prev, {
             type: chartType,
             title: chartSpec.title || 'New Chart',
@@ -332,14 +469,6 @@ ${JSON.stringify(data?.slice(0, 3), null, 2)}
             yKey: 'value'
           }]);
           
-          chartCreated = true;
-          
-          // Completely remove the JSON from response
-          responseText = responseText.replace(jsonMatch[0], '');
-          responseText = responseText.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-          responseText = responseText.trim();
-          
-          // Replace with success message
           responseText = `✅ Chart created successfully! I've added "${chartSpec.title}" to your dashboard. Scroll up to see it!`;
           
         } catch (e) {
@@ -488,13 +617,12 @@ ${JSON.stringify(data?.slice(0, 3), null, 2)}
   };
 
   return (
-    <div className="min-h-screen bg-gray-900">
-      {/* Header */}
-      <div className="bg-gray-800 border-b border-gray-700 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+    <div className="min-h-screen w-full bg-gray-900 overflow-x-hidden">
+      <div className="bg-gray-800 border-b border-gray-700 shadow-lg sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-teal-400 to-teal-600 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-gradient-to-br from-teal-400 to-teal-600 rounded-lg flex items-center justify-center flex-shrink-0">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <circle cx="12" cy="12" r="3" stroke="white" strokeWidth="2"/>
                   <path d="M12 5C7.58172 5 4 8.58172 4 12C4 15.4183 7.58172 19 12 19C16.4183 19 20 15.4183 20 12" stroke="white" strokeWidth="2" strokeLinecap="round"/>
@@ -503,27 +631,26 @@ ${JSON.stringify(data?.slice(0, 3), null, 2)}
                 </svg>
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white">Insighta</h1>
+                <h1 className="text-xl sm:text-2xl font-bold text-white">Insighta</h1>
                 <p className="text-gray-400 text-xs">Because your data deserves to talk back</p>
               </div>
             </div>
             <button
               onClick={() => setShowBugReport(true)}
-              className="flex items-center gap-2 bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition"
+              className="flex items-center gap-2 bg-gray-700 text-white px-3 py-2 text-sm rounded-lg hover:bg-gray-600 transition"
             >
               <Bug size={18} />
               Report Bug
             </button>
           </div>
           <div className="mt-3 flex items-center gap-2 bg-yellow-900/30 border border-yellow-700 rounded-lg px-3 py-2">
-            <AlertCircle size={16} className="text-yellow-500" />
-            <span className="text-yellow-200 text-sm">Beta Version - Product in Testing Phase</span>
+            <AlertCircle size={16} className="text-yellow-500 flex-shrink-0" />
+            <span className="text-yellow-200 text-xs sm:text-sm">Beta Version - Product in Testing Phase</span>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Upload Section */}
+      <div id="dashboard-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
         {!data && (
           <div className="bg-gray-800 rounded-lg border-2 border-dashed border-gray-600 p-12 text-center">
             <input
@@ -545,30 +672,53 @@ ${JSON.stringify(data?.slice(0, 3), null, 2)}
           </div>
         )}
 
-        {/* Dashboard */}
         {data && (
           <>
-            <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 mb-6 flex justify-between items-center">
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
                 <h2 className="text-xl font-semibold text-white">{fileName}</h2>
                 <p className="text-gray-400 text-sm">{data.length} rows × {headers.length} columns</p>
               </div>
-              <button
-                onClick={() => {
-                  setData(null);
-                  setCharts([]);
-                  setKpis([]);
-                  setChatMessages([]);
-                  setFileName('');
-                }}
-                className="bg-gray-700 text-gray-300 px-4 py-2 rounded-lg hover:bg-gray-600 transition"
-              >
-                Upload New File
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={exportToPDF}
+                  disabled={isLoading}
+                  className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-600 text-sm"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M7 18H17V16H7V18Z" fill="currentColor"/>
+                    <path d="M17 14H7V12H17V14Z" fill="currentColor"/>
+                    <path d="M7 10H11V8H7V10Z" fill="currentColor"/>
+                    <path fillRule="evenodd" clipRule="evenodd" d="M6 2C4.34315 2 3 3.34315 3 5V19C3 20.6569 4.34315 22 6 22H18C19.6569 22 21 20.6569 21 19V9C21 5.13401 17.866 2 14 2H6ZM6 4H13V9H19V19C19 19.5523 18.5523 20 18 20H6C5.44772 20 5 19.5523 5 19V5C5 4.44772 5.44772 4 6 4ZM15 4.10002C16.6113 4.4271 17.9413 5.52906 18.584 7H15V4.10002Z" fill="currentColor"/>
+                  </svg>
+                  Export PDF
+                </button>
+                <button
+                  onClick={exportToPPT}
+                  disabled={isLoading}
+                  className="flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition disabled:bg-gray-600 text-sm"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2ZM18 20H6V4H13V9H18V20Z" fill="currentColor"/>
+                  </svg>
+                  Export PPT
+                </button>
+                <button
+                  onClick={() => {
+                    setData(null);
+                    setCharts([]);
+                    setKpis([]);
+                    setChatMessages([]);
+                    setFileName('');
+                  }}
+                  className="bg-gray-700 text-gray-300 px-4 py-2 rounded-lg hover:bg-gray-600 transition text-sm"
+                >
+                  Upload New File
+                </button>
+              </div>
             </div>
 
-            {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               {kpis.slice(0, 4).map((kpi, idx) => (
                 <div key={idx} className="bg-gradient-to-br from-gray-800 to-gray-900 p-6 rounded-lg border border-gray-700 shadow-lg">
                   <div className="flex justify-between items-start mb-2">
@@ -584,8 +734,7 @@ ${JSON.stringify(data?.slice(0, 3), null, 2)}
               ))}
             </div>
 
-            {/* Charts Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6 mb-6">
               {charts.map((chart, idx) => (
                 <div key={idx}>{renderChart(chart, idx)}</div>
               ))}
@@ -594,25 +743,23 @@ ${JSON.stringify(data?.slice(0, 3), null, 2)}
         )}
       </div>
 
-      {/* Footer */}
-      <footer className="bg-gray-800 border-t border-gray-700 py-8 mt-12">
-        <div className="max-w-7xl mx-auto px-4 text-center">
-          <p className="text-gray-400 mb-2">Co-founders</p>
-          <p className="text-white font-semibold mb-4">
+      <footer className="bg-gray-800 border-t border-gray-700 py-6 sm:py-8 mt-12 w-full">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <p className="text-gray-400 mb-2 text-sm">Co-founders</p>
+          <p className="text-white font-semibold mb-4 text-sm sm:text-base">
             Nikhil Upadhyay • Prasanna Syam Shreyas Nair
           </p>
           <div className="bg-red-900/30 border border-red-700 rounded-lg p-4 max-w-2xl mx-auto mb-4">
-            <p className="text-red-400 font-semibold mb-2">🔍 We are actively looking for job opportunities!</p>
-            <div className="text-red-300 text-sm space-y-1">
-              <p>📧 <a href="mailto:Nikhil25000@gmail.com" className="underline hover:text-red-200">Nikhil25000@gmail.com</a></p>
-              <p>📧 <a href="mailto:shreyasnair1998@gmail.com" className="underline hover:text-red-200">shreyasnair1998@gmail.com</a></p>
+            <p className="text-red-400 font-semibold mb-2 text-sm sm:text-base">🔍 We are actively looking for job opportunities!</p>
+            <div className="text-red-300 text-xs sm:text-sm space-y-1">
+              <p>📧 <a href="mailto:Nikhil25000@gmail.com" className="underline hover:text-red-200 break-all">Nikhil25000@gmail.com</a></p>
+              <p>📧 <a href="mailto:shreyasnair1998@gmail.com" className="underline hover:text-red-200 break-all">shreyasnair1998@gmail.com</a></p>
             </div>
           </div>
-          <p className="text-gray-500 text-sm">📍 Dublin, Ireland</p>
+          <p className="text-gray-500 text-xs sm:text-sm">📍 Dublin, Ireland</p>
         </div>
       </footer>
 
-      {/* AI Chat Button */}
       {data && (
         <button
           onClick={() => setShowChat(!showChat)}
@@ -622,9 +769,8 @@ ${JSON.stringify(data?.slice(0, 3), null, 2)}
         </button>
       )}
 
-      {/* Chat Panel */}
       {showChat && (
-        <div className="fixed bottom-24 right-6 w-96 h-[500px] bg-gray-800 border border-gray-700 rounded-lg shadow-2xl flex flex-col z-50">
+        <div className="fixed bottom-20 sm:bottom-24 right-4 sm:right-6 w-[calc(100vw-2rem)] sm:w-96 max-w-md h-[70vh] sm:h-[500px] bg-gray-800 border border-gray-700 rounded-lg shadow-2xl flex flex-col z-50">
           <div className="bg-teal-600 text-white p-4 rounded-t-lg flex justify-between items-center">
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center">
@@ -714,7 +860,6 @@ ${JSON.stringify(data?.slice(0, 3), null, 2)}
         </div>
       )}
 
-      {/* Bug Report Modal */}
       {showBugReport && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
           <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 w-96">
